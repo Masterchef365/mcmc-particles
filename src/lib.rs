@@ -40,18 +40,18 @@ impl UserState for ClientState {
 
         sched.add_system(Self::update_sim).build();
 
-        let potential_cutoff = 0.14;
+        let potential_cutoff = 0.001;
         let editor_potential = LennardJones::default();
 
-        let n = 5_000;
+        let n = 500;
 
-        let sim = Sim::new(n, 0.14, editor_potential);
+        let sim = Sim::new(n, potential_cutoff, editor_potential);
 
         Self {
             ui,
             sim,
             substeps: 100,
-            potential_cutoff: 0.14,
+            potential_cutoff,
             editor_potential,
             n,
         }
@@ -65,7 +65,7 @@ impl ClientState {
         self.ui.show(io, |ui| {
             ui.add(DragValue::new(&mut self.substeps).prefix("Substeps: "));
             ui.add(
-                DragValue::new(&mut self.sim.inverse_temperature)
+                DragValue::new(&mut self.sim.temperature)
                     .prefix("Temp: ")
                     .speed(1e-2),
             );
@@ -156,7 +156,7 @@ struct Sim {
     state: State,
     potential: LennardJones,
     accel: QueryAccelerator,
-    inverse_temperature: f32,
+    temperature: f32,
 }
 
 impl Sim {
@@ -176,13 +176,13 @@ impl Sim {
 
         let accel = QueryAccelerator::new(&state.positions, radius);
 
-        let inverse_temperature = 1.;
+        let temperature = 100.;
 
         Self {
             state,
             potential,
             accel,
-            inverse_temperature,
+            temperature,
         }
     }
 
@@ -211,7 +211,7 @@ impl Sim {
         let delta_e = new_energy - old_energy;
 
         // Decide whether to accept the change
-        let probability = (-self.inverse_temperature * delta_e).exp();
+        let probability = (-delta_e / self.temperature).exp();
         if probability > rng.gen_range(0.0..=1.0) {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);
@@ -267,9 +267,9 @@ impl LennardJones {
 impl Default for LennardJones {
     fn default() -> Self {
         Self {
-            attract: 0.08,
-            repulse: 0.01,
-            dispersion: 0.01,
+            attract: 0.01,
+            repulse: 0.007,
+            dispersion: 10.,
         }
     }
 }

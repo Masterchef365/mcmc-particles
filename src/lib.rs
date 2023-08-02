@@ -45,7 +45,7 @@ impl UserState for ClientState {
 
         let n = 500;
 
-        let sim = Sim::new(n, potential_cutoff, editor_potential);
+        let sim = Sim::new(n, potential_cutoff, editor_potential, 10.0, 0.0003);
 
         Self {
             ui,
@@ -79,25 +79,31 @@ impl ClientState {
             ui.separator();
 
             let mut rebuild_accel = false;
-            rebuild_accel |= ui.add(
-                DragValue::new(&mut self.potential_cutoff)
-                    .prefix("Potential cutoff: ")
-                    .clamp_range(1e-6..=f32::INFINITY)
-                    .speed(1e-2)
-            ).changed();
-            rebuild_accel |= ui.add(
-                DragValue::new(&mut self.editor_potential.attract)
-                    .prefix("Attract: ")
-                    .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-3),
-            ).changed();
-            rebuild_accel |= ui.add(
-                DragValue::new(&mut self.editor_potential.repulse)
-                    .prefix("Repulse: ")
-                    .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-4),
-            ).changed();
-            
+            rebuild_accel |= ui
+                .add(
+                    DragValue::new(&mut self.potential_cutoff)
+                        .prefix("Potential cutoff: ")
+                        .clamp_range(1e-6..=f32::INFINITY)
+                        .speed(1e-2),
+                )
+                .changed();
+            rebuild_accel |= ui
+                .add(
+                    DragValue::new(&mut self.editor_potential.attract)
+                        .prefix("Attract: ")
+                        .clamp_range(0.0..=f32::INFINITY)
+                        .speed(1e-3),
+                )
+                .changed();
+            rebuild_accel |= ui
+                .add(
+                    DragValue::new(&mut self.editor_potential.repulse)
+                        .prefix("Repulse: ")
+                        .clamp_range(0.0..=f32::INFINITY)
+                        .speed(1e-4),
+                )
+                .changed();
+
             let radius = self.editor_potential.solve(self.potential_cutoff);
             ui.label(format!("Radius: {}", radius));
 
@@ -110,7 +116,13 @@ impl ClientState {
                 let do_reset = ui.button("Reset").clicked();
                 ui.add(DragValue::new(&mut self.n).prefix("# of particles: "));
                 if do_reset {
-                    self.sim = Sim::new(self.n, self.potential_cutoff, self.editor_potential);
+                    self.sim = Sim::new(
+                        self.n,
+                        self.potential_cutoff,
+                        self.editor_potential,
+                        self.sim.temperature,
+                        self.sim.walk_sigma,
+                    );
                 }
             });
         });
@@ -160,7 +172,13 @@ struct Sim {
 }
 
 impl Sim {
-    pub fn new(n: usize, cutoff: f32, potential: LennardJones) -> Self {
+    pub fn new(
+        n: usize,
+        cutoff: f32,
+        potential: LennardJones,
+        temperature: f32,
+        walk_sigma: f32,
+    ) -> Self {
         let mut rng = rng();
 
         let s = 0.1;
@@ -176,14 +194,12 @@ impl Sim {
 
         let accel = QueryAccelerator::new(&state.positions, radius);
 
-        let temperature = 10.;
-
         Self {
             state,
             potential,
             accel,
             temperature,
-            walk_sigma: 0.0003,
+            walk_sigma,
         }
     }
 

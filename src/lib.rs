@@ -50,7 +50,7 @@ impl UserState for ClientState {
         Self {
             ui,
             sim,
-            substeps: 100,
+            substeps: 500,
             potential_cutoff,
             editor_potential,
             n,

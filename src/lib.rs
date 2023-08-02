@@ -37,7 +37,7 @@ impl UserState for ClientState {
 
         sched.add_system(Self::update_sim).build();
 
-        let sim = Sim::new(500);
+        let sim = Sim::new(1000);
 
         Self { ui, sim, substeps: 100 }
     }
@@ -45,13 +45,11 @@ impl UserState for ClientState {
 
 impl ClientState {
     fn update_ui(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
-        let energy = total_energy(&self.sim.state);
-
         //cimvr_engine_interface::println!("{}", energy);
 
         self.ui.show(io, |ui| {
-            ui.label(format!("Total energy: {energy:.003}"));
-            ui.add(DragValue::new(&mut self.substeps));
+            ui.add(DragValue::new(&mut self.substeps).prefix("Substeps: "));
+            ui.add(DragValue::new(&mut self.sim.inverse_temperature).prefix("Temp: ").speed(1e-2));
         });
     }
 
@@ -95,6 +93,7 @@ struct Sim {
     state: State,
     potential: LennardJones,
     accel: QueryAccelerator,
+    inverse_temperature: f32,
 }
 
 impl Sim {
@@ -110,66 +109,70 @@ impl Sim {
         let state = State { positions };
 
         let potential = LennardJones {
-            attract: 3.6,
-            repulse: 3.8,
-            dispersion: 1.,
+            attract: 0.01,
+            repulse: 0.01,
+            dispersion: 0.01,
         };
 
         // We cut off interactions at 5% of the lennard jones potential
         let cutoff = 5./100.;
 
-        let accel = QueryAccelerator::new(&state.positions, cutoff);
+        let radius = potential.solve(cutoff);
+        cimvr_engine_interface::println!("Radius: {}", radius);
+
+        let accel = QueryAccelerator::new(&state.positions, radius);
+
+        let inverse_temperature = 1.;
 
         Self {
             state,
             potential,
             accel,
+            inverse_temperature,
         }
     }
 
     pub fn step(&mut self) {
         let ref mut rng = rng();
+
+        // Pick a particle
+        let idx = rng.gen_range(0..self.state.positions.len());
+
+        // Perterb it
+        let original = self.state.positions[idx];
+        let mut candidate = original;
         let normal = Normal::new(0.0, 0.001).unwrap();
+        candidate.x += normal.sample(rng);
+        candidate.y += normal.sample(rng);
 
-        let mut old_energy = total_energy(&self.state);
+        // Calculate the candidate change in energy
+        let old_energy = self.energy_due_to(idx, original);
+        let new_energy = self.energy_due_to(idx, candidate);
+        let delta_e = new_energy - old_energy;
 
-        let mut new_state = self.state.clone();
-
-        let part = new_state.positions.choose_mut(rng).unwrap();
-        part.x += normal.sample(rng);
-        part.y += normal.sample(rng);
-
-        let new_energy = total_energy(&new_state);
-
-        if new_energy < old_energy {
-            self.state = new_state;
-            old_energy = new_energy;
+        // Decide whether to accept the change
+        let probability = (-self.inverse_temperature * delta_e).exp();
+        if probability > rng.gen_range(0.0..=1.0) {
+            self.state.positions[idx] = candidate;
+            self.accel.replace_point(idx, original, candidate);
         }
+
+    }
+
+    pub fn energy_due_to(&self, idx: usize, pos: Vec2) -> f32 {
+        let mut energy = 0.;
+        for neighbor in self.accel.query_neighbors(&self.state.positions, idx, pos) {
+            let distance = self.state.positions[neighbor].distance(pos);
+            let potential = self.potential.eval(distance);
+            energy += potential;
+        }
+        energy
     }
 }
 
 fn rng() -> SmallRng {
     let u = ((Pcg::new().gen_u32() as u64) << 32) | Pcg::new().gen_u32() as u64;
     SmallRng::seed_from_u64(u)
-}
-
-fn potential(a: Vec2, b: Vec2) -> f32 {
-    let r = a.distance(b);
-    let epsilon = 0.01;
-    let attract = 0.01;
-    let repulse = 0.01;
-
-    4. * epsilon * ((repulse / r).powi(12) - (attract / r).powi(6))
-}
-
-fn total_energy(state: &State) -> f32 {
-    let mut sum = 0.;
-    for i in 0..state.positions.len() {
-        for j in (i + 1)..state.positions.len() {
-            sum += potential(state.positions[i], state.positions[j]);
-        }
-    }
-    sum
 }
 
 impl LennardJones {

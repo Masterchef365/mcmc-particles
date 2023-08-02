@@ -42,9 +42,9 @@ impl QueryAccelerator {
     pub fn query_neighbors<'s, 'p: 's>(
         &'s self,
         points: &'p [Vec2],
-        queried_idx: usize,
+        query_idx: usize,
+        query_point: Vec2,
     ) -> impl Iterator<Item = usize> + 's {
-        let query_point = points[queried_idx];
         let origin = quantize(query_point, self.radius);
 
         self.neighbors
@@ -54,7 +54,7 @@ impl QueryAccelerator {
                 self.cells.get(&key).map(|cell_indices| {
                     cell_indices.iter().copied().filter(move |&idx| {
                         let dist = (points[idx] - query_point).length_squared();
-                        idx != queried_idx && dist <= self.radius_sq
+                        idx != query_idx && dist <= self.radius_sq
                     })
                 })
             })

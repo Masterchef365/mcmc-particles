@@ -69,6 +69,13 @@ impl ClientState {
                     .prefix("Temp: ")
                     .speed(1e-2),
             );
+            ui.add(
+                DragValue::new(&mut self.sim.walk_sigma)
+                    .prefix("Walk σ: ")
+                    .clamp_range(0.0..=f32::INFINITY)
+                    .speed(1e-4),
+            );
+
             ui.separator();
 
             let mut rebuild_accel = false;
@@ -82,7 +89,7 @@ impl ClientState {
                 DragValue::new(&mut self.editor_potential.attract)
                     .prefix("Attract: ")
                     .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-2),
+                    .speed(1e-3),
             ).changed();
             rebuild_accel |= ui.add(
                 DragValue::new(&mut self.editor_potential.repulse)
@@ -157,6 +164,7 @@ struct Sim {
     potential: LennardJones,
     accel: QueryAccelerator,
     temperature: f32,
+    walk_sigma: f32,
 }
 
 impl Sim {
@@ -183,6 +191,7 @@ impl Sim {
             potential,
             accel,
             temperature,
+            walk_sigma: 0.001,
         }
     }
 
@@ -201,7 +210,7 @@ impl Sim {
         // Perterb it
         let original = self.state.positions[idx];
         let mut candidate = original;
-        let normal = Normal::new(0.0, 0.001).unwrap();
+        let normal = Normal::new(0.0, self.walk_sigma).unwrap();
         candidate.x += normal.sample(rng);
         candidate.y += normal.sample(rng);
 

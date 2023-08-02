@@ -17,7 +17,8 @@ struct ClientState {
     substeps: usize,
     potential_cutoff: f32,
     editor_potential: LennardJones,
-    n: usize,
+    n_particles: usize,
+    n_rules: usize,
 }
 
 make_app_state!(ClientState, DummyUserState);
@@ -43,9 +44,10 @@ impl UserState for ClientState {
         let potential_cutoff = 0.001;
         let editor_potential = LennardJones::default();
 
-        let n = 500;
+        let n_rules = 3;
+        let n_particles = 500;
 
-        let sim = Sim::new(n, potential_cutoff, Ruleset::default(), 10.0, 0.0003);
+        let sim = Sim::new(n_particles, potential_cutoff, random_rules(n_rules), 10.0, 0.0003);
 
         Self {
             ui,
@@ -53,9 +55,39 @@ impl UserState for ClientState {
             substeps: 500,
             potential_cutoff,
             editor_potential,
-            n,
+            n_particles,
+            n_rules,
         }
     }
+}
+
+fn random_rules(n_rules: usize) -> Ruleset {
+    let mut rng = rng();
+
+    let mut rules = vec![];
+    for _ in 0..n_rules {
+        let mut interactions = vec![];
+        for _ in 0..n_rules {
+            let mut rule = LennardJones::default();
+            let normal = Normal::new(rule.attract, rule.attract / 3.).unwrap();
+            rule.attract = normal.sample(&mut rng).abs();
+
+            let normal = Normal::new(rule.repulse, rule.repulse / 3.).unwrap();
+            rule.repulse = normal.sample(&mut rng).abs();
+
+            interactions.push(rule);
+        }
+
+        let color = hsv_to_rgb(rng.gen_range(0.0..=360.0), 1., 1.);
+
+        let rule = ParticleRules {
+            color,
+            interactions,
+        };
+
+        rules.push(rule);
+    }
+    Ruleset { particles: rules }
 }
 
 impl ClientState {
@@ -114,12 +146,14 @@ impl ClientState {
 
             ui.horizontal(|ui| {
                 let do_reset = ui.button("Reset").clicked();
-                ui.add(DragValue::new(&mut self.n).prefix("# of particles: "));
+                ui.add(DragValue::new(&mut self.n_particles).prefix("# of particles: "));
+                ui.add(DragValue::new(&mut self.n_rules).prefix("# of rules: ").clamp_range(1..=usize::MAX));
+
                 if do_reset {
                     self.sim = Sim::new(
-                        self.n,
+                        self.n_particles,
                         self.potential_cutoff,
-                        Ruleset::default(),
+                        random_rules(self.n_rules),
                         self.sim.temperature,
                         self.sim.walk_sigma,
                     );
@@ -183,8 +217,6 @@ impl Sim {
         let positions = (0..n)
             .map(|_| Vec2::new(rng.gen_range(-s..=s), rng.gen_range(-s..=s)))
             .collect();
-
-        let rules = Ruleset::default();
 
         let types = (0..n)
             .map(|_| rng.gen_range(0..rules.particles.len() as u8))
@@ -312,10 +344,12 @@ impl Default for LennardJones {
     }
 }
 
+#[derive(Clone)]
 struct Ruleset {
     particles: Vec<ParticleRules>,
 }
 
+#[derive(Clone)]
 struct ParticleRules {
     color: [f32; 3],
     interactions: Vec<LennardJones>,
@@ -354,4 +388,49 @@ impl Default for Ruleset {
             ],
         }
     }
+}
+
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
+    let c = v * s; // Chroma
+    let h_prime = (h / 60.0) % 6.0;
+    let x = c * (1.0 - ((h_prime % 2.0) - 1.0).abs());
+    let m = v - c;
+
+    let (mut r, mut g, mut b);
+
+    if 0. <= h_prime && h_prime < 1. {
+        r = c;
+        g = x;
+        b = 0.0;
+    } else if 1.0 <= h_prime && h_prime < 2.0 {
+        r = x;
+        g = c;
+        b = 0.0;
+    } else if 2.0 <= h_prime && h_prime < 3.0 {
+        r = 0.0;
+        g = c;
+        b = x;
+    } else if 3.0 <= h_prime && h_prime < 4.0 {
+        r = 0.0;
+        g = x;
+        b = c;
+    } else if 4.0 <= h_prime && h_prime < 5.0 {
+        r = x;
+        g = 0.0;
+        b = c;
+    } else if 5.0 <= h_prime && h_prime < 6.0 {
+        r = c;
+        g = 0.0;
+        b = x;
+    } else {
+        r = 0.0;
+        g = 0.0;
+        b = 0.0;
+    }
+
+    r += m;
+    g += m;
+    b += m;
+
+    [r, g, b]
 }

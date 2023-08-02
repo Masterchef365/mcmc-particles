@@ -75,7 +75,7 @@ impl ClientState {
             rebuild_accel |= ui.add(
                 DragValue::new(&mut self.potential_cutoff)
                     .prefix("Potential cutoff: ")
-                    .clamp_range(0.001..=f32::INFINITY)
+                    .clamp_range(1e-6..=f32::INFINITY)
                     .speed(1e-2)
             ).changed();
             rebuild_accel |= ui.add(
@@ -88,7 +88,7 @@ impl ClientState {
                 DragValue::new(&mut self.editor_potential.repulse)
                     .prefix("Repulse: ")
                     .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-2),
+                    .speed(1e-4),
             ).changed();
             rebuild_accel |= ui.add(
                 DragValue::new(&mut self.editor_potential.dispersion)

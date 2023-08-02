@@ -15,6 +15,9 @@ struct ClientState {
     ui: GuiTab,
     sim: Sim,
     substeps: usize,
+    potential_cutoff: f32,
+    editor_potential: LennardJones,
+    n: usize,
 }
 
 make_app_state!(ClientState, DummyUserState);
@@ -37,9 +40,21 @@ impl UserState for ClientState {
 
         sched.add_system(Self::update_sim).build();
 
-        let sim = Sim::new(1000);
+        let potential_cutoff = 0.14;
+        let editor_potential = LennardJones::default();
 
-        Self { ui, sim, substeps: 100 }
+        let n = 5_000;
+
+        let sim = Sim::new(n, 0.14, editor_potential);
+
+        Self {
+            ui,
+            sim,
+            substeps: 100,
+            potential_cutoff: 0.14,
+            editor_potential,
+            n,
+        }
     }
 }
 
@@ -49,7 +64,54 @@ impl ClientState {
 
         self.ui.show(io, |ui| {
             ui.add(DragValue::new(&mut self.substeps).prefix("Substeps: "));
-            ui.add(DragValue::new(&mut self.sim.inverse_temperature).prefix("Temp: ").speed(1e-2));
+            ui.add(
+                DragValue::new(&mut self.sim.inverse_temperature)
+                    .prefix("Temp: ")
+                    .speed(1e-2),
+            );
+            ui.separator();
+
+            let mut rebuild_accel = false;
+            rebuild_accel |= ui.add(
+                DragValue::new(&mut self.potential_cutoff)
+                    .prefix("Potential cutoff: ")
+                    .clamp_range(0.001..=f32::INFINITY)
+                    .speed(1e-2)
+            ).changed();
+            rebuild_accel |= ui.add(
+                DragValue::new(&mut self.editor_potential.attract)
+                    .prefix("Attract: ")
+                    .clamp_range(0.0..=f32::INFINITY)
+                    .speed(1e-2),
+            ).changed();
+            rebuild_accel |= ui.add(
+                DragValue::new(&mut self.editor_potential.repulse)
+                    .prefix("Repulse: ")
+                    .clamp_range(0.0..=f32::INFINITY)
+                    .speed(1e-2),
+            ).changed();
+            rebuild_accel |= ui.add(
+                DragValue::new(&mut self.editor_potential.dispersion)
+                    .prefix("Dispersion: ")
+                    .clamp_range(0.0..=f32::INFINITY)
+                    .speed(1e-2),
+            ).changed();
+
+            let radius = self.editor_potential.solve(self.potential_cutoff);
+            ui.label(format!("Radius: {}", radius));
+
+            if rebuild_accel {
+                self.sim
+                    .set_potential(self.editor_potential, self.potential_cutoff);
+            }
+
+            ui.horizontal(|ui| {
+                let do_reset = ui.button("Reset").clicked();
+                ui.add(DragValue::new(&mut self.n).prefix("# of particles: "));
+                if do_reset {
+                    self.sim = Sim::new(self.n, self.potential_cutoff, self.editor_potential);
+                }
+            });
         });
     }
 
@@ -75,6 +137,7 @@ fn state_mesh(state: &State) -> Mesh {
     Mesh { vertices, indices }
 }
 
+#[derive(Clone, Copy, Debug)]
 struct LennardJones {
     /// Attractive coefficient
     pub attract: f32,
@@ -97,7 +160,7 @@ struct Sim {
 }
 
 impl Sim {
-    pub fn new(n: usize) -> Self {
+    pub fn new(n: usize, cutoff: f32, potential: LennardJones) -> Self {
         let mut rng = rng();
 
         let s = 0.1;
@@ -107,15 +170,6 @@ impl Sim {
             .collect();
 
         let state = State { positions };
-
-        let potential = LennardJones {
-            attract: 0.01,
-            repulse: 0.01,
-            dispersion: 0.01,
-        };
-
-        // We cut off interactions at 5% of the lennard jones potential
-        let cutoff = 5./100.;
 
         let radius = potential.solve(cutoff);
         cimvr_engine_interface::println!("Radius: {}", radius);
@@ -130,6 +184,12 @@ impl Sim {
             accel,
             inverse_temperature,
         }
+    }
+
+    pub fn set_potential(&mut self, potential: LennardJones, cutoff: f32) {
+        let radius = potential.solve(cutoff);
+        self.accel = QueryAccelerator::new(&self.state.positions, radius);
+        self.potential = potential;
     }
 
     pub fn step(&mut self) {
@@ -156,7 +216,6 @@ impl Sim {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);
         }
-
     }
 
     pub fn energy_due_to(&self, idx: usize, pos: Vec2) -> f32 {
@@ -191,7 +250,7 @@ impl LennardJones {
 
         if self.repulse < 0.5 {
             // Corner case where the solution is numerically inaccurate
-            self.attract * (4. * self.dispersion / potential).powf(1./6.)
+            self.attract * (4. * self.dispersion / potential).powf(1. / 6.)
         } else {
             let a = 4. * self.dispersion * self.repulse.powi(12);
             let b = -4. * self.dispersion * self.attract.powi(6);
@@ -200,7 +259,17 @@ impl LennardJones {
             // The familiar formula
             let p = (-b - (b.powi(2) - 4. * a * c).sqrt()) / a / 2.;
 
-            p.abs().powf(-1./6.)
+            p.abs().powf(-1. / 6.)
+        }
+    }
+}
+
+impl Default for LennardJones {
+    fn default() -> Self {
+        Self {
+            attract: 0.08,
+            repulse: 0.01,
+            dispersion: 0.01,
         }
     }
 }

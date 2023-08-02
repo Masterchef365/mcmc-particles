@@ -73,7 +73,7 @@ impl ClientState {
                 DragValue::new(&mut self.sim.walk_sigma)
                     .prefix("Walk σ: ")
                     .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-4),
+                    .speed(1e-5),
             );
 
             ui.separator();
@@ -183,7 +183,7 @@ impl Sim {
             potential,
             accel,
             temperature,
-            walk_sigma: 0.001,
+            walk_sigma: 0.0003,
         }
     }
 
@@ -250,10 +250,10 @@ impl LennardJones {
 
         if self.repulse < 0.5 {
             // Corner case where the solution is numerically inaccurate
-            self.attract * (4. / potential).powf(1. / 6.)
+            self.attract * (1. / potential).powf(1. / 6.)
         } else {
-            let a = 4. * self.repulse.powi(12);
-            let b = -4. * self.attract.powi(6);
+            let a = self.repulse.powi(12);
+            let b = -self.attract.powi(6);
             let c = -potential;
 
             // The familiar formula

@@ -97,13 +97,7 @@ impl ClientState {
                     .clamp_range(0.0..=f32::INFINITY)
                     .speed(1e-4),
             ).changed();
-            rebuild_accel |= ui.add(
-                DragValue::new(&mut self.editor_potential.dispersion)
-                    .prefix("Dispersion: ")
-                    .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-2),
-            ).changed();
-
+            
             let radius = self.editor_potential.solve(self.potential_cutoff);
             ui.label(format!("Radius: {}", radius));
 
@@ -150,8 +144,6 @@ struct LennardJones {
     pub attract: f32,
     /// Repulsive coefficient
     pub repulse: f32,
-    /// Dispersion energy
-    pub dispersion: f32,
 }
 
 #[derive(Clone)]
@@ -184,7 +176,7 @@ impl Sim {
 
         let accel = QueryAccelerator::new(&state.positions, radius);
 
-        let temperature = 100.;
+        let temperature = 10.;
 
         Self {
             state,
@@ -246,7 +238,7 @@ fn rng() -> SmallRng {
 impl LennardJones {
     /// Returns the potential value given the radius away from the particle
     pub fn eval(&self, radius: f32) -> f32 {
-        4. * self.dispersion * ((self.repulse / radius).powi(12) - (self.attract / radius).powi(6))
+        4. * ((self.repulse / radius).powi(12) - (self.attract / radius).powi(6))
     }
 
     /// Solve for the radius given a potential magnitude (sign is discarded)
@@ -255,14 +247,13 @@ impl LennardJones {
     pub fn solve(&self, potential: f32) -> f32 {
         assert!(self.repulse >= 0.);
         assert!(self.attract >= 0.);
-        assert!(self.dispersion >= 0.);
 
         if self.repulse < 0.5 {
             // Corner case where the solution is numerically inaccurate
-            self.attract * (4. * self.dispersion / potential).powf(1. / 6.)
+            self.attract * (4. / potential).powf(1. / 6.)
         } else {
-            let a = 4. * self.dispersion * self.repulse.powi(12);
-            let b = -4. * self.dispersion * self.attract.powi(6);
+            let a = 4. * self.repulse.powi(12);
+            let b = -4. * self.attract.powi(6);
             let c = -potential;
 
             // The familiar formula
@@ -278,7 +269,6 @@ impl Default for LennardJones {
         Self {
             attract: 0.01,
             repulse: 0.007,
-            dispersion: 10.,
         }
     }
 }

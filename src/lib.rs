@@ -70,10 +70,10 @@ fn random_rules(n_rules: usize) -> Ruleset {
         for _ in 0..n_rules {
             let mut rule = LennardJones::default();
             let normal = Normal::new(rule.attract, rule.attract).unwrap();
-            rule.attract = normal.sample(&mut rng).abs();
+            rule.attract = normal.sample(&mut rng).max(0.0);
 
             let normal = Normal::new(rule.repulse, rule.repulse).unwrap();
-            rule.repulse = normal.sample(&mut rng).abs();
+            rule.repulse = normal.sample(&mut rng).max(0.0);
 
             interactions.push(rule);
         }
@@ -147,7 +147,7 @@ impl ClientState {
             ui.horizontal(|ui| {
                 let do_reset = ui.button("Reset").clicked();
                 ui.add(DragValue::new(&mut self.n_particles).prefix("# of particles: "));
-                ui.add(DragValue::new(&mut self.n_rules).prefix("# of rules: ").clamp_range(1..=usize::MAX));
+                ui.add(DragValue::new(&mut self.n_rules).prefix("# of rules: ").clamp_range(1..=256));
 
                 if do_reset {
                     self.sim = Sim::new(

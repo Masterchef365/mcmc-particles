@@ -15,7 +15,7 @@ struct ClientState {
     ui: GuiTab,
     sim: Sim,
     substeps: usize,
-    potential_cutoff: f32,
+    accel_radius: f32,
     editor_potential: LennardJones,
     n_particles: usize,
     n_rules: usize,
@@ -41,19 +41,19 @@ impl UserState for ClientState {
 
         sched.add_system(Self::update_sim).build();
 
-        let potential_cutoff = 0.001;
+        let accel_radius = 0.005;
         let editor_potential = LennardJones::default();
 
         let n_rules = 3;
-        let n_particles = 500;
+        let n_particles = 5000;
 
-        let sim = Sim::new(n_particles, potential_cutoff, random_rules(n_rules), 10.0, 0.0003);
+        let sim = Sim::new(n_particles, accel_radius, random_rules(n_rules), 10.0, 0.0003);
 
         Self {
             ui,
             sim,
-            substeps: 500,
-            potential_cutoff,
+            substeps: 15_000,
+            accel_radius,
             editor_potential,
             n_particles,
             n_rules,
@@ -69,10 +69,10 @@ fn random_rules(n_rules: usize) -> Ruleset {
         let mut interactions = vec![];
         for _ in 0..n_rules {
             let mut rule = LennardJones::default();
-            let normal = Normal::new(rule.attract, rule.attract / 3.).unwrap();
+            let normal = Normal::new(rule.attract, rule.attract).unwrap();
             rule.attract = normal.sample(&mut rng).abs();
 
-            let normal = Normal::new(rule.repulse, rule.repulse / 3.).unwrap();
+            let normal = Normal::new(rule.repulse, rule.repulse).unwrap();
             rule.repulse = normal.sample(&mut rng).abs();
 
             interactions.push(rule);
@@ -113,10 +113,10 @@ impl ClientState {
             let mut rebuild_accel = false;
             rebuild_accel |= ui
                 .add(
-                    DragValue::new(&mut self.potential_cutoff)
-                        .prefix("Potential cutoff: ")
+                    DragValue::new(&mut self.accel_radius)
+                        .prefix("Accel radius: ")
                         .clamp_range(1e-6..=f32::INFINITY)
-                        .speed(1e-2),
+                        .speed(1e-4),
                 )
                 .changed();
             rebuild_accel |= ui
@@ -136,12 +136,12 @@ impl ClientState {
                 )
                 .changed();
 
-            let radius = self.editor_potential.solve(self.potential_cutoff);
-            ui.label(format!("Radius: {}", radius));
+            //let radius = self.editor_potential.solve(self.accel_radius);
+            //ui.label(format!("Radius: {}", radius));
 
             if rebuild_accel {
                 self.sim
-                    .set_potential(self.editor_potential, self.potential_cutoff);
+                    .set_potential(self.editor_potential, self.accel_radius);
             }
 
             ui.horizontal(|ui| {
@@ -152,7 +152,7 @@ impl ClientState {
                 if do_reset {
                     self.sim = Sim::new(
                         self.n_particles,
-                        self.potential_cutoff,
+                        self.accel_radius,
                         random_rules(self.n_rules),
                         self.sim.temperature,
                         self.sim.walk_sigma,
@@ -209,7 +209,7 @@ struct Sim {
 }
 
 impl Sim {
-    pub fn new(n: usize, cutoff: f32, rules: Ruleset, temperature: f32, walk_sigma: f32) -> Self {
+    pub fn new(n: usize, accel_radius: f32, rules: Ruleset, temperature: f32, walk_sigma: f32) -> Self {
         let mut rng = rng();
 
         let s = 0.1;
@@ -224,22 +224,7 @@ impl Sim {
 
         let state = State { positions, types };
 
-        let radius = rules
-            .particles
-            .iter()
-            .map(|rule| {
-                rule.interactions
-                    .iter()
-                    .map(|r| r.solve(cutoff))
-                    .max_by(|a, b| a.total_cmp(b))
-                    .unwrap()
-            })
-            .max_by(|a, b| a.total_cmp(b))
-            .unwrap();
-
-        cimvr_engine_interface::println!("Radius: {}", radius);
-
-        let accel = QueryAccelerator::new(&state.positions, radius);
+        let accel = QueryAccelerator::new(&state.positions, accel_radius);
 
         Self {
             state,
@@ -250,11 +235,11 @@ impl Sim {
         }
     }
 
-    pub fn set_potential(&mut self, potential: LennardJones, cutoff: f32) {
-        let radius = potential.solve(cutoff);
+    pub fn set_potential(&mut self, potential: LennardJones, radius: f32) {
+        //let radius = potential.solve(cutoff);
         self.accel = QueryAccelerator::new(&self.state.positions, radius);
         //self.potential = potential;
-        todo!();
+        //todo!();
     }
 
     pub fn step(&mut self) {
@@ -312,6 +297,7 @@ impl LennardJones {
         4. * ((self.repulse / radius).powi(12) - (self.attract / radius).powi(6))
     }
 
+    /*
     /// Solve for the radius given a potential magnitude (sign is discarded)
     /// This is useful for finding an appropriate cutoff radius for local interactions
     /// https://www.desmos.com/calculator/itneqxndwy
@@ -333,6 +319,7 @@ impl LennardJones {
             p.abs().powf(-1. / 6.)
         }
     }
+    */
 }
 
 impl Default for LennardJones {

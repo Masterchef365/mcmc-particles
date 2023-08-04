@@ -34,6 +34,14 @@ impl UserState for ClientState {
 
         let ui = GuiTab::new(io, "MCMC Particle life");
 
+        let s = PeicewiseForce::default();
+        cimvr_engine_interface::dbg!(s);
+        let k = 100;
+        for x in 0..k {
+            let i = s.inter_max_dist * x as f32 / k as f32;
+            cimvr_engine_interface::println!("{}, {}", i, s.eval(i));
+        }
+
         sched
             .add_system(Self::update_ui)
             .subscribe::<GuiInputMessage>()
@@ -68,6 +76,9 @@ fn random_rules(n_rules: usize) -> Ruleset {
     for _ in 0..n_rules {
         let mut interactions = vec![];
         for _ in 0..n_rules {
+            let mut rule = PeicewiseForce::default();
+            rule.inter_strength = rng.gen_range(-15.0..=15.0);
+            /*
             let mut rule = LennardJones::default();
             let normal = Normal::new(rule.attract, rule.attract).unwrap();
             rule.attract = normal.sample(&mut rng).max(0.0);
@@ -75,6 +86,7 @@ fn random_rules(n_rules: usize) -> Ruleset {
             let normal = Normal::new(rule.repulse, rule.repulse).unwrap();
             rule.repulse = normal.sample(&mut rng).max(0.0);
 
+            */
             interactions.push(rule);
         }
 
@@ -261,7 +273,8 @@ impl Sim {
         let delta_e = new_energy - old_energy;
 
         // Decide whether to accept the change
-        let probability = (-delta_e / self.temperature).exp();
+        //let probability = (-delta_e / self.temperature).exp();
+        let probability = (-delta_e).exp();
         if probability > rng.gen_range(0.0..=1.0) {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);
@@ -331,6 +344,51 @@ impl Default for LennardJones {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PeicewiseForce {
+    /// Magnitude of the default repulsion force
+    pub default_repulse: f32,
+    /// Zero point between default repulsion and particle interaction (0 to 1)
+    pub inter_threshold: f32,
+    /// Interaction peak strength
+    pub inter_strength: f32,
+    /// Maximum distance of particle interaction (0 to 1)
+    pub inter_max_dist: f32,
+}
+
+impl PeicewiseForce {
+    fn eval(&self, radius: f32) -> f32 {
+        let d = (self.inter_max_dist - self.inter_threshold) / 2.;
+
+        let repulse_r = radius.clamp(0., self.inter_threshold);
+        let z_to_peak_r = (radius - self.inter_threshold).clamp(0., d);
+        let peak_end_r = (radius - self.inter_threshold - d).clamp(0., d);
+
+        let mut u = self.default_repulse * (repulse_r.powi(2)/2./self.inter_threshold - repulse_r);
+        u += (self.inter_strength / d) * (z_to_peak_r.powi(2)/2.);
+        u -= (self.inter_strength / d) * ((peak_end_r - d).powi(2)/2.);
+
+        u -= (self.inter_strength * d - self.inter_threshold * self.default_repulse)/2.;
+
+        u
+    }
+
+    /*fn force(&self, dist: f32) -> f32 {
+        if dist < self.inter_threshold {
+            let f = dist / self.inter_threshold;
+            (1. - f) * -self.default_repulse
+        } else if dist > self.inter_max_dist {
+            0.0
+        } else {
+            let x = dist - self.inter_threshold;
+            let x = x / (self.inter_max_dist - self.inter_threshold);
+            let x = x * 2. - 1.;
+            let x = 1. - x.abs();
+            x * self.inter_strength
+        }
+    }*/
+}
+
 #[derive(Clone)]
 struct Ruleset {
     particles: Vec<ParticleRules>,
@@ -339,9 +397,10 @@ struct Ruleset {
 #[derive(Clone)]
 struct ParticleRules {
     color: [f32; 3],
-    interactions: Vec<LennardJones>,
+    interactions: Vec<PeicewiseForce>,
 }
 
+/*
 impl Default for Ruleset {
     fn default() -> Self {
         Self {
@@ -376,6 +435,7 @@ impl Default for Ruleset {
         }
     }
 }
+*/
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
     let c = v * s; // Chroma
@@ -421,3 +481,15 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
 
     [r, g, b]
 }
+
+impl Default for PeicewiseForce {
+    fn default() -> Self {
+        Self {
+            default_repulse: 10.,
+            inter_threshold: 0.02,
+            inter_strength: 1.,
+            inter_max_dist: 0.2,
+        }
+    }
+}
+

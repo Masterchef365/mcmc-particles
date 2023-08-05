@@ -34,6 +34,7 @@ impl UserState for ClientState {
 
         let ui = GuiTab::new(io, "MCMC Particle life");
 
+        /*
         let s = PeicewiseForce::default();
         cimvr_engine_interface::dbg!(s);
         let k = 100;
@@ -41,6 +42,7 @@ impl UserState for ClientState {
             let i = s.inter_max_dist * x as f32 / k as f32;
             cimvr_engine_interface::println!("{}, {}", i, s.eval(i));
         }
+        */
 
         sched
             .add_system(Self::update_ui)
@@ -224,7 +226,7 @@ impl Sim {
     pub fn new(n: usize, accel_radius: f32, rules: Ruleset, temperature: f32, walk_sigma: f32) -> Self {
         let mut rng = rng();
 
-        let s = 0.1;
+        let s = 1.;
 
         let positions = (0..n)
             .map(|_| Vec2::new(rng.gen_range(-s..=s), rng.gen_range(-s..=s)))
@@ -274,7 +276,7 @@ impl Sim {
 
         // Decide whether to accept the change
         //let probability = (-delta_e / self.temperature).exp();
-        let probability = (-delta_e).exp();
+        let probability = (-delta_e / self.temperature).exp();
         if probability > rng.gen_range(0.0..=1.0) {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);
@@ -486,7 +488,7 @@ impl Default for PeicewiseForce {
     fn default() -> Self {
         Self {
             default_repulse: 10.,
-            inter_threshold: 0.02,
+            inter_threshold: 0.05,
             inter_strength: 1.,
             inter_max_dist: 0.2,
         }

@@ -51,18 +51,18 @@ impl UserState for ClientState {
 
         sched.add_system(Self::update_sim).build();
 
-        let accel_radius = 0.005;
+        let accel_radius = 0.2;
         let editor_potential = LennardJones::default();
 
         let n_rules = 3;
         let n_particles = 5000;
 
-        let sim = Sim::new(n_particles, accel_radius, random_rules(n_rules), 10.0, 0.0003);
+        let sim = Sim::new(n_particles, accel_radius, random_rules(n_rules), 10.0, 0.03);
 
         Self {
             ui,
             sim,
-            substeps: 15_000,
+            substeps: 1500,
             accel_radius,
             editor_potential,
             n_particles,
@@ -119,7 +119,7 @@ impl ClientState {
                 DragValue::new(&mut self.sim.walk_sigma)
                     .prefix("Walk σ: ")
                     .clamp_range(0.0..=f32::INFINITY)
-                    .speed(1e-5),
+                    .speed(1e-3),
             );
 
             ui.separator();
@@ -276,7 +276,7 @@ impl Sim {
 
         // Decide whether to accept the change
         //let probability = (-delta_e / self.temperature).exp();
-        let probability = (-delta_e / self.temperature).exp();
+        let probability = (-delta_e).exp();
         if probability > rng.gen_range(0.0..=1.0) {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);

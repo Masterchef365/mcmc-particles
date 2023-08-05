@@ -57,7 +57,7 @@ impl UserState for ClientState {
         let n_rules = 3;
         let n_particles = 5000;
 
-        let sim = Sim::new(n_particles, accel_radius, random_rules(n_rules), 10.0, 0.03);
+        let sim = Sim::new(n_particles, accel_radius, random_rules(n_rules), 0.001, 0.03);
 
         Self {
             ui,
@@ -275,8 +275,8 @@ impl Sim {
         let delta_e = new_energy - old_energy;
 
         // Decide whether to accept the change
-        //let probability = (-delta_e / self.temperature).exp();
-        let probability = (-delta_e).exp();
+        let probability = (-delta_e / self.temperature).exp();
+        //let probability = (-delta_e).exp();
         if probability > rng.gen_range(0.0..=1.0) {
             self.state.positions[idx] = candidate;
             self.accel.replace_point(idx, original, candidate);
@@ -487,7 +487,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
 impl Default for PeicewiseForce {
     fn default() -> Self {
         Self {
-            default_repulse: 10.,
+            default_repulse: 25.,
             inter_threshold: 0.05,
             inter_strength: 1.,
             inter_max_dist: 0.2,
